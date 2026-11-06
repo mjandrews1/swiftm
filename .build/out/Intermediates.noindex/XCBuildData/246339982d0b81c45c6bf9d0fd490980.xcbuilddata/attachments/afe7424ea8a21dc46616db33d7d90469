@@ -1,4 +1,0 @@
-module IR {
-header "IR-Swift.h"
-export *
-}

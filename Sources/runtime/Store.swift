@@ -1,5 +1,5 @@
-// Store — locals (simple map + subscripted tree) and globals tree, with
-// M-collation-ordered traversal ($ORDER/$QUERY) per MSemantics.dfy.
+// Store — locals (simple map + per-name subscripted trees) and globals trees,
+// with M-collation-ordered traversal ($ORDER/$QUERY) per MSemantics.dfy.
 import IR
 
 public final class Node {
@@ -10,40 +10,60 @@ public final class Node {
 
 public final class Store {
   public var locals: [String: MValue] = [:]   // simple local names
-  public var localTree = Node()               // subscripted locals
-  public var globals: [String: Node] = [:]    // "^NAME" -> tree
+  public var localTree = Node()               // kids[varName] -> subscripted subtree
+  public var globals: [String: Node] = [:]    // "NAME" (caret stripped) -> tree
 
   public init() {}
 
-  // Resolve a reference to its (container, key) for SET/KILL, or read value.
-  public func node(for name: String, subs: [MValue]) -> (Node, String)? {
-    let tree: Node
+  // Root tree for a name: globals["G"] for ^G; localTree.kids["x"] for local x.
+  func tree(for name: String) -> Node? {
+    if name.hasPrefix("^") { return globals[String(name.dropFirst())] }
+    return localTree.kids[name]
+  }
+
+  func ensureTree(for name: String) -> Node {
     if name.hasPrefix("^") {
       let g = String(name.dropFirst())
       if globals[g] == nil { globals[g] = Node() }
-      tree = globals[g]!
-    } else {
-      tree = localTree
+      return globals[g]!
     }
+    if localTree.kids[name] == nil { localTree.kids[name] = Node() }
+    return localTree.kids[name]!
+  }
+
+  func descend(_ tree: Node, _ subs: [MValue]) -> Node {
     var n = tree
     for s in subs {
-      let k = String(s.raw)
+      let k = s.raw
       if n.kids[k] == nil { n.kids[k] = Node() }
       n = n.kids[k]!
     }
-    return (n, subs.isEmpty ? "" : String(subs.last!.raw))
+    return n
+  }
+
+  func nodeAt(_ name: String, _ subs: [MValue]) -> Node? {
+    guard let t = tree(for: name) else { return nil }
+    var n = t
+    for s in subs {
+      guard let kid = n.kids[s.raw] else { return nil }
+      n = kid
+    }
+    return n
+  }
+
+  // Non-creating read; nil = undefined (caller decides error vs null).
+  public func fetch(name: String, subs: [MValue]) -> MValue? {
+    if subs.isEmpty, !name.hasPrefix("^") { return locals[name] }
+    return nodeAt(name, subs)?.value
   }
 
   public func get(name: String, subs: [MValue]) -> MValue {
-    if subs.isEmpty, !name.hasPrefix("^") { return locals[name] ?? .null }
-    guard let (n, _) = node(for: name, subs: subs) else { return .null }
-    return n.value ?? .null
+    fetch(name: name, subs: subs) ?? .null
   }
 
   public func set(name: String, subs: [MValue], _ v: MValue) {
     if subs.isEmpty, !name.hasPrefix("^") { locals[name] = v; return }
-    guard let (n, _) = node(for: name, subs: subs) else { return }
-    n.value = v
+    descend(ensureTree(for: name), subs).value = v
   }
 
   public func kill(name: String, subs: [MValue]) {
@@ -53,88 +73,110 @@ public final class Store {
       return
     }
     // kill node + subtree
-    guard var n = (name.hasPrefix("^") ? globals[String(name.dropFirst())] : localTree) else { return }
-    for s in subs.dropLast() { n = n.kids[String(s.raw)] ?? Node(); }
-    if let last = subs.last { n.kids.removeValue(forKey: String(last.raw)) }
+    guard let t = tree(for: name) else { return }
+    var n = t
+    for s in subs.dropLast() {
+      guard let kid = n.kids[s.raw] else { return }
+      n = kid
+    }
+    if let last = subs.last { n.kids.removeValue(forKey: last.raw) }
   }
 
   // $DATA: 0 none, 1 value only, 10 children only, 11 both
   public func data(name: String, subs: [MValue]) -> Int {
-    let tree = name.hasPrefix("^") ? globals[String(name.dropFirst())] : localTree
-    guard var n = tree else { return 0 }
-    for s in subs {
-      if let kid = n.kids[String(s.raw)] { n = kid } else { return 0 }
-    }
+    guard let n = nodeAt(name, subs) else { return 0 }
     let hasVal = n.value != nil
     let hasKids = !n.kids.isEmpty
     return hasVal ? (hasKids ? 11 : 1) : (hasKids ? 10 : 0)
   }
 
-  // $ORDER/$QUERY: next key in collation order after `cur` ("" = first).
+  // $ORDER/$NEXT: next/prev key in collation order after `cur` ("" = first;
+  // for dir=-1 with cur="" the last key, per GT.M/RSM).
   public func order(name: String, subsPrefix: [MValue], cur: String, dir: Int) -> String? {
-    let tree = name.hasPrefix("^") ? globals[String(name.dropFirst())] : localTree
-    guard var n = tree else { return nil }
+    guard let t = tree(for: name) else { return nil }
+    var n = t
     for s in subsPrefix {
-      if let kid = n.kids[String(s.raw)] { n = kid } else { return nil }
+      guard let kid = n.kids[s.raw] else { return nil }
+      n = kid
     }
     let keys = n.kids.keys.sorted { MValue.coll($0, $1) < 0 }
+    if keys.isEmpty { return nil }
     if dir > 0 {
       return keys.first { cur.isEmpty || MValue.coll($0, cur) > 0 }
     } else {
-      return keys.reversed().first { !cur.isEmpty && MValue.coll($0, cur) < 0 }
+      if cur.isEmpty { return keys.last }
+      return keys.reversed().first { MValue.coll($0, cur) < 0 }
     }
   }
 
-  // $QUERY: full reference string of next node in collation order after ref.
-  public func query(_ ref: String) -> String? {
-    // ref like ^G(a,b) or ^G — find next node strictly after
-    guard let open = ref.firstIndex(of: "(") else {
-      // root: first child of ^G, or next global
-      let g = ref.hasPrefix("^") ? String(ref.dropFirst()) : ref
-      if let node = (ref.hasPrefix("^") ? globals[g] : localTree), !node.kids.isEmpty {
-        let first = node.kids.keys.sorted { MValue.coll($0, $1) < 0 }.first!
-        return ref + "(" + first + ")"
+  // Canonical reference formatting: numeric subscripts bare, strings quoted.
+  public static func canonSub(_ s: String) -> String {
+    if MValue.numericStr(s) && !s.hasPrefix("+") { return s }
+    return "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+  }
+
+  public static func formatRef(_ name: String, _ subs: [String]) -> String {
+    if subs.isEmpty { return name }
+    return name + "(" + subs.map { canonSub($0) }.joined(separator: ",") + ")"
+  }
+
+  // $QUERY: next (dir=1) / previous (dir=-1) node in pre-order traversal of the
+  // tree rooted at name. subs == [""] means the root itself.
+  public func queryRef(name: String, subs: [MValue], dir: Int) -> String? {
+    let subsS = subs.map { $0.raw }
+    var path = (subsS == [""]) ? [] : subsS
+    if dir > 0 {
+      if let n = nodeAt(name, path.map { MValue($0) }), !n.kids.isEmpty {
+        let first = n.kids.keys.sorted { MValue.coll($0, $1) < 0 }.first!
+        return Store.formatRef(name, path + [first])
       }
-      // next global name after g
-      let gs = globals.keys.sorted { MValue.coll($0, $1) < 0 }
-      if let nx = gs.first(where: { MValue.coll($0, g) > 0 }) { return "^" + nx }
+      // climb for a next sibling
+      while !path.isEmpty {
+        let lastKey = path.last!
+        let parentPath = Array(path.dropLast())
+        guard let parent = nodeAt(name, parentPath.map { MValue($0) }) else { return nil }
+        let sibs = parent.kids.keys.sorted { MValue.coll($0, $1) < 0 }
+        if let nx = sibs.first(where: { MValue.coll($0, lastKey) > 0 }) {
+          return Store.formatRef(name, parentPath + [nx])
+        }
+        path = parentPath
+      }
+      // next global name
+      if name.hasPrefix("^") {
+        let g = String(name.dropFirst())
+        let gs = globals.keys.sorted { MValue.coll($0, $1) < 0 }
+        if let nx = gs.first(where: { MValue.coll($0, g) > 0 }) { return "^" + nx }
+      }
+      return nil
+    } else {
+      // previous node in pre-order
+      if !path.isEmpty {
+        let lastKey = path.last!
+        let parentPath = Array(path.dropLast())
+        if let parent = nodeAt(name, parentPath.map { MValue($0) }) {
+          let sibs = parent.kids.keys.sorted { MValue.coll($0, $1) < 0 }
+          if let pv = sibs.reversed().first(where: { MValue.coll($0, lastKey) < 0 }) {
+            // last descendant of pv
+            var q = parentPath + [pv]
+            var n = nodeAt(name, q.map { MValue($0) })!
+            while !n.kids.isEmpty {
+              let l = n.kids.keys.sorted { MValue.coll($0, $1) < 0 }.last!
+              q.append(l)
+              n = n.kids[l]!
+            }
+            return Store.formatRef(name, q)
+          }
+          // no previous sibling: the parent node itself
+          return Store.formatRef(name, parentPath)
+        }
+      }
+      // previous global name
+      if name.hasPrefix("^") {
+        let g = String(name.dropFirst())
+        let gs = globals.keys.sorted { MValue.coll($0, $1) < 0 }
+        if let pv = gs.reversed().first(where: { MValue.coll($0, g) < 0 }) { return "^" + pv }
+      }
       return nil
     }
-    let head = String(ref[..<open])
-    let inner = String(ref[ref.index(after: open)..<ref.index(before: ref.endIndex)])
-    let subs = splitSubs(inner)
-    let tree = head.hasPrefix("^") ? globals[String(head.dropFirst())] : localTree
-    guard var n = tree else { return nil }
-    for s in subs {
-      if let kid = n.kids[s] { n = kid } else { return nil }
-    }
-    if let v = n.value, subs.isEmpty == false {
-      // node itself has value; next is first child if any, else next sibling...
-      if !n.kids.isEmpty {
-        let first = n.kids.keys.sorted { MValue.coll($0, $1) < 0 }.first!
-        return head + "(" + inner + "," + first + ")"
-      }
-    }
-    // next sibling at last level, else bubble up — simplified: next key at this level
-    let keys = n.kids.keys.sorted { MValue.coll($0, $1) < 0 }
-    let lastKey = subs.last ?? ""
-    if let nx = keys.first(where: { MValue.coll($0, lastKey) > 0 }) {
-      return head + "(" + subs.dropLast().joined(separator: ",") + (subs.count > 1 ? "," : "") + nx + ")"
-    }
-    return nil
-  }
-
-  func splitSubs(_ inner: String) -> [String] {
-    var out: [String] = []
-    var cur = ""
-    var inStr = false
-    for ch in inner {
-      if ch == "\"" { inStr.toggle(); cur.append(ch) }
-      else if ch == "," && !inStr { out.append(cur); cur = "" }
-      else { cur.append(ch) }
-    }
-    if !cur.isEmpty { out.append(cur) }
-    // strip quotes
-    return out.map { $0.hasPrefix("\"") ? String($0.dropFirst().dropLast()) : $0 }
   }
 }

@@ -12,6 +12,7 @@ indirect public enum Expr {
 
 indirect public enum WriteArg {
   case expr(Expr)
+  case indirectArg(Expr) // @expr as a write arg: expands to comma-separated items
   case newline      // !
   case col(Expr)    // ?n
   case tab          // ?  (tab to next position — simplified to nothing extra)

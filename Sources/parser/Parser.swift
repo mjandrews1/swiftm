@@ -11,7 +11,7 @@ public struct Parser {
 
   public init(_ text: String) { s = text[...]; pos = s.startIndex }
 
-  static func parseRoutine(_ text: String) throws -> (Routine, [String: [String]]) {
+  public static func parseRoutine(_ text: String) throws -> (Routine, [String: [String]]) {
     var lines: [MLine] = []
     var formals: [String: [String]] = [:]
     for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
@@ -42,8 +42,9 @@ public struct Parser {
           }
         } else { p.pos = save }
       }
-      // skip leading whitespace (level)
+      // skip leading whitespace (level) and dot-level markers (flattened)
       p.skipWs()
+      while p.pos < p.s.endIndex, p.s[p.pos] == "." { p.pos = p.s.index(after: p.pos); p.skipWs() }
       let cmds = try p.parseCommands()
       if label != nil || !cmds.isEmpty { lines.append(MLine(label: label, cmds: cmds)) }
     }
@@ -84,8 +85,8 @@ public struct Parser {
           let post = try parsePostcond()
           let cond = try parseExpr()
           let body = try parseCommands()
-          cmds.append(.ifCmd(cond: cond, body: body))
-          _ = post
+          let inner = Cmd.ifCmd(cond: cond, body: body)
+          if let post { cmds.append(.ifCmd(cond: post, body: [inner])) } else { cmds.append(inner) }
           return cmds
         }
         if w == "E" || w == "ELSE" {
@@ -95,10 +96,22 @@ public struct Parser {
           return cmds
         }
       }
-      let cmd = try parseCommand()
-      cmds.append(cmd)
+      let (cmd, post) = try parseCommand()
+      // MCommand.dfy postconditional universality: any command may carry :cond
+      if let post { cmds.append(.ifCmd(cond: post, body: [cmd])) } else { cmds.append(cmd) }
     }
     return cmds
+  }
+
+  // Parse a standalone expression / reference string (for @ indirection).
+  public static func parseExprString(_ text: String) throws -> Expr {
+    var p = Parser(text)
+    let e = try p.parseExpr()
+    return e
+  }
+  public static func parseRefString(_ text: String) throws -> Expr {
+    var p = Parser(text)
+    return try p.parseLValue()
   }
 
   mutating func peekWordUpper() -> String? {
@@ -114,7 +127,7 @@ public struct Parser {
     return nil
   }
 
-  mutating func parseCommand() throws -> Cmd {
+  mutating func parseCommand() throws -> (Cmd, Expr?) {
     guard let w = readWord() else { throw ParseError.msg("expected command at \(peek())") }
     let up = w.uppercased()
     let post = try parsePostcond()
@@ -128,32 +141,31 @@ public struct Parser {
         assigns.append((lhs, rhs))
         skipWs()
       } while eat(",")
-      return .set(assigns)
+      return (.set(assigns), post)
     case "W", "WRITE":
       var args: [WriteArg] = []
       repeat {
         skipWs()
-        if pos < s.endIndex {
-          if s[pos] == "!" { pos = s.index(after: pos); args.append(.newline); skipWs(); if eat(",") { continue } else { break } }
-          if s[pos] == "#" { pos = s.index(after: pos); args.append(.formfeed); skipWs(); if eat(",") { continue } else { break } }
-          if s[pos] == "?" {
-            pos = s.index(after: pos)
-            if eat(",") { args.append(.tab); continue }
-            let e = try parseExpr(); args.append(.col(e)); skipWs()
-            if eat(",") { continue } else { break }
-          }
-          if s[pos] == "*" { pos = s.index(after: pos); let e = try parseExpr(); args.append(.char(e)); skipWs(); if eat(",") { continue } else { break } }
+        if pos >= s.endIndex { break }
+        if s[pos] == "!" { pos = s.index(after: pos); args.append(.newline) }
+        else if s[pos] == "#" { pos = s.index(after: pos); args.append(.formfeed) }
+        else if s[pos] == "?" {
+          pos = s.index(after: pos)
+          if pos >= s.endIndex || s[pos] == "," { args.append(.tab) }
+          else { args.append(.col(try parseExpr())) }
         }
-        let e = try parseExpr(); args.append(.expr(e)); skipWs()
+        else if s[pos] == "*" { pos = s.index(after: pos); args.append(.char(try parseExpr())) }
+        else { args.append(.expr(try parseExpr())) }  // @expr included: arg indirection
+        skipWs()
       } while eat(",")
-      return .write(args)
+      return (.write(args), post)
     case "F", "FOR":
       // F  | F var | F var=s:e | F var=s:st:e | F var=l1,l2,...
       skipWs()
       if pos >= s.endIndex || s[pos] == " " || s[pos] == "\t" {
         // argumentless FOR: body = rest of line
         let body = try parseCommands()
-        return .forLoop(ctrl: nil, range: nil, list: nil, body: body)
+        return (.forLoop(ctrl: nil, range: nil, list: nil, body: body), post)
       }
       let ctrl = try parseLValue()
       skipWs()
@@ -162,7 +174,7 @@ public struct Parser {
         let pc = try parseExpr()
         let body = try parseCommands()
         // represent as ifCmd around forLoop
-        return .ifCmd(cond: pc, body: [.forLoop(ctrl: ctrl, range: nil, list: nil, body: body)])
+        return (.ifCmd(cond: pc, body: [.forLoop(ctrl: ctrl, range: nil, list: nil, body: body)]), post)
       }
       if eat("=") {
         let first = try parseExpr()
@@ -171,50 +183,50 @@ public struct Parser {
           let step = try parseExpr(); skipWs(); guard eat(":") else { throw ParseError.msg("FOR range") }
           let end = try parseExpr()
           let body = try parseCommands()
-          return .forLoop(ctrl: ctrl, range: (first, step, end), list: nil, body: body)
+          return (.forLoop(ctrl: ctrl, range: (first, step, end), list: nil, body: body), post)
         } else {
           // list form or start:end
           skipWs()
           if eat(":") {
             let end = try parseExpr()
             let body = try parseCommands()
-            return .forLoop(ctrl: ctrl, range: (first, nil, end), list: nil, body: body)
+            return (.forLoop(ctrl: ctrl, range: (first, nil, end), list: nil, body: body), post)
           }
           var list = [first]
           while eat(",") { list.append(try parseExpr()) }
           let body = try parseCommands()
-          return .forLoop(ctrl: ctrl, range: nil, list: list, body: body)
+          return (.forLoop(ctrl: ctrl, range: nil, list: list, body: body), post)
         }
       }
       let body = try parseCommands()
-      return .forLoop(ctrl: ctrl, range: nil, list: nil, body: body)
+      return (.forLoop(ctrl: ctrl, range: nil, list: nil, body: body), post)
     case "K", "KILL":
       skipWs()
       if eat("(") {
         var names: [Expr] = []
         repeat { names.append(try parseLValue()); skipWs() } while eat(",")
         guard eat(")") else { throw ParseError.msg("K ( needs )") }
-        return .kill(names: names, exclusive: true)
+        return (.kill(names: names, exclusive: true), post)
       }
       var names: [Expr] = []
       if pos < s.endIndex, s[pos] != " ", s[pos] != "\t" {
         repeat { names.append(try parseLValue()); skipWs() } while eat(",")
       }
-      return .kill(names: names, exclusive: false)
+      return (.kill(names: names, exclusive: false), post)
     case "N", "NEW":
       skipWs()
       if eat("(") {
         var names: [Expr] = []
         repeat { names.append(try parseLValue()); skipWs() } while eat(",")
         guard eat(")") else { throw ParseError.msg("N ( needs )") }
-        return .newCmd(names: names, exclusive: true)
+        return (.newCmd(names: names, exclusive: true), post)
       }
       if pos < s.endIndex, s[pos] != " ", s[pos] != "\t" {
         var names: [Expr] = []
         repeat { names.append(try parseLValue()); skipWs() } while eat(",")
-        return .newCmd(names: names, exclusive: false)
+        return (.newCmd(names: names, exclusive: false), post)
       }
-      return .newCmd(names: nil, exclusive: false)
+      return (.newCmd(names: nil, exclusive: false), post)
     case "D", "DO":
       skipWs()
       var label: String? = nil
@@ -233,29 +245,29 @@ public struct Parser {
         }
       }
       let body = try parseCommands()
-      return .doCall(label: label, args: args, postcond: post, body: body)
+      return (.doCall(label: label, args: args, postcond: nil, body: body), post)
     case "G", "GOTO":
       guard let lbl = readWord() else { throw ParseError.msg("GOTO needs label") }
-      return .goto(label: lbl, postcond: post)
+      return (.goto(label: lbl, postcond: nil), post)
     case "Q", "QUIT":
       skipWs()
       if pos < s.endIndex, s[pos] != " ", s[pos] != "\t" {
         let e = try parseExpr()
-        return .quit(expr: e, postcond: post)
+        return (.quit(expr: e, postcond: nil), post)
       }
-      return .quit(expr: nil, postcond: post)
+      return (.quit(expr: nil, postcond: nil), post)
     case "X", "XECUTE":
       let e = try parseExpr()
-      return .xecute(code: e, postcond: post)
+      return (.xecute(code: e, postcond: nil), post)
     case "H", "HANG", "HALT":
-      if up == "HALT" { return .quit(expr: nil, postcond: nil) }
+      if up == "HALT" { return (.quit(expr: nil, postcond: nil), nil) }
       skipWs()
-      if pos < s.endIndex, s[pos] != " ", s[pos] != "\t" { return .hang(sec: try parseExpr()) }
-      return .hang(sec: nil)
+      if pos < s.endIndex, s[pos] != " ", s[pos] != "\t" { return (.hang(sec: try parseExpr()), post) }
+      return (.hang(sec: nil), post)
     case "M", "MERGE":
       let dst = try parseLValue(); skipWs(); guard eat("=") else { throw ParseError.msg("MERGE =") }
       let src = try parseLValue()
-      return .merge(dst: dst, src: src)
+      return (.merge(dst: dst, src: src), post)
     case "L", "LOCK":
       var plus = false, minus = false
       skipWs()
@@ -266,23 +278,25 @@ public struct Parser {
       }
       var to: Expr? = nil
       if eat(":") { to = try parseExpr() }
-      return .lock(args: args, plus: plus, minus: minus, timeout: to)
+      return (.lock(args: args, plus: plus, minus: minus, timeout: to), post)
     case "V", "VIEW":
       var args: [Expr] = []
       if pos < s.endIndex, s[pos] != " ", s[pos] != "\t" {
         repeat { args.append(try parseExpr()); skipWs() } while eat(",")
       }
-      return .view(args: args)
+      return (.view(args: args), post)
     case "B", "BREAK":
-      return .breakCmd
+      return (.breakCmd, post)
     default:
       throw ParseError.msg("unknown command \(w)")
     }
   }
 
-  // lvalue: name or name(subs) or ^name(...)
+  // lvalue: name or name(subs) or ^name(...) or @indirection or $INTRINSIC(...)
   mutating func parseLValue() throws -> Expr {
     skipWs()
+    if eat("@") { return .indirect(try parseUnary()) }
+    if pos < s.endIndex, s[pos] == "$" { return try parsePrimary() }  // $E(...)/$P(...)/$ETRAP
     var name = ""
     if eat("^") { name = "^" }
     guard let w = readWord() else { throw ParseError.msg("expected name at \(peek())") }
@@ -307,22 +321,57 @@ public struct Parser {
       // two-char operators first
       let two = pos < s.index(before: s.endIndex) ? String(s[pos...s.index(pos, offsetBy: 1)]) : ""
       var op: String? = nil
-      if ["<=", ">=", "]]", "']]", "'[", "']"].contains(two) { op = two; pos = s.index(pos, offsetBy: 2) }
+      if ["<=", ">=", "]]", "']]", "'[", "']", "**", "'&", "'!", "'="].contains(two) {
+        op = two; pos = s.index(pos, offsetBy: 2)
+      }
       else if ["[", "]", "=", "<", ">", "+", "-", "*", "/", "\\", "#", "_", "&", "!", "'", "?"].contains(String(c)) {
         op = String(c); pos = s.index(after: pos)
         if op == "'" || op == "!" {
-          // postfix not-operators: '= '< '< '> ' etc. — M: '= is "not equals"
-          if pos < s.endIndex, s[pos] == "=" || s[pos] == "<" || s[pos] == ">" || s[pos] == "[" || s[pos] == "]" {
+          // postfix not-operators: '= '< '> '[ '] — and NAND/NOR ' & ' !
+          if pos < s.endIndex, ["=", "<", ">", "[", "]", "&", "!"].contains(String(s[pos])) {
             op = "'" + String(s[pos]); pos = s.index(after: pos)
           }
         }
-      } else if c == "*" {
-        // could be ** (power)
-        op = "*"; pos = s.index(after: pos)
-        if pos < s.endIndex, s[pos] == "*" { op = "**"; pos = s.index(after: pos) }
       } else { break }
       guard let o = op else { break }
-      let rhs = try parseUnary()
+      let rhs: Expr
+      if o == "[" || o == "'[" {
+        // contains: ["..."] — the closing ] is consumed (corpus C33 form)
+        let r = try parseUnary()
+        skipWs()
+        if pos < s.endIndex, s[pos] == "]" { pos = s.index(after: pos) }
+        lhs = .bin(op: o, l: lhs, r: r)
+        continue
+      }
+      if o == "?" {
+        // pattern match: rhs is a pattern literal (unquoted 1A.AN, 2"hi") or a
+        // quoted string — not a normal expression
+        skipWs()
+        if pos < s.endIndex, s[pos] == "\"" {
+          rhs = try parseUnary()
+        } else {
+          var pat = ""
+          while pos < s.endIndex {
+            let pc = s[pos]
+            if pc == "\"" {
+              // quoted literal inside the pattern (with "" escape); keep quotes
+              pat.append("\""); pos = s.index(after: pos)
+              while pos < s.endIndex {
+                if s[pos] == "\"" {
+                  if s.index(after: pos) < s.endIndex, s[s.index(after: pos)] == "\"" { pat += "\"\""; pos = s.index(pos, offsetBy: 2) }
+                  else { pos = s.index(after: pos); break }
+                } else { pat.append(s[pos]); pos = s.index(after: pos) }
+              }
+              pat.append("\"")
+            } else if pc.isLetter || pc.isNumber || pc == "." {
+              pat.append(pc); pos = s.index(after: pos)
+            } else { break }
+          }
+          rhs = .lit(MValue(pat))
+        }
+      } else {
+        rhs = try parseUnary()
+      }
       lhs = .bin(op: o, l: lhs, r: rhs)
     }
     return lhs
@@ -333,6 +382,7 @@ public struct Parser {
     if pos < s.endIndex {
       let c = s[pos]
       if c == "-" { pos = s.index(after: pos); return .un(op: "-", e: try parseUnary()) }
+      if c == "+" { pos = s.index(after: pos); return try parseUnary() }  // unary + (e.g. $TEXT(+1))
       if c == "'" { pos = s.index(after: pos); return .un(op: "'", e: try parseUnary()) }
       if c == "&" { pos = s.index(after: pos); return .un(op: "&", e: try parseUnary()) }
       if c == "@" { pos = s.index(after: pos); return .indirect(try parseUnary()) }
@@ -382,7 +432,8 @@ public struct Parser {
       var args: [Expr] = []
       if eat("(") {
         if !(pos < s.endIndex && s[pos] == ")") {
-          repeat { args.append(try parseExpr()); skipWs() } while eat(",")
+          // $SELECT uses ':' as the pair separator
+          repeat { args.append(try parseExpr()); skipWs() } while eat(",") || eat(":")
         }
         guard eat(")") else { throw ParseError.msg("unclosed $ (") }
       }

@@ -7,7 +7,7 @@ public struct MValue: Equatable, Hashable {
   public var raw: String
   public var isnum: Bool
 
-  public static let null = MValue("", isnum: true) // "" is canonical 0
+  public static let null = MValue("", isnum: false) // undefined/null value: prints as ""
 
   public init(_ raw: String, isnum: Bool = false) {
     self.raw = raw
@@ -60,8 +60,34 @@ public struct MValue: Equatable, Hashable {
 
   public var num: Double { MValue.val(raw) }
 
-  // Canonical M number formatting (mstr): no trailing .0, no leading +/zeros,
-  // exponent form only for very large/small magnitudes (like GT.M).
+  // Whole-string numeric (mjvm ExprEval.numericStr): optional sign, digits with
+  // optional fraction and optional E-exponent. Used by "=" (C24 rule: both
+  // numeric-ish -> numeric compare, else string equality).
+  public static func numericStr(_ s: String) -> Bool {
+    if s.isEmpty { return false }
+    let a = Array(s.utf8)
+    var i = 0
+    if a[i] == 43 || a[i] == 45 { i += 1 }
+    var digits = 0
+    while i < a.count, a[i] >= 48, a[i] <= 57 { i += 1; digits += 1 }
+    if i < a.count, a[i] == 46 {
+      i += 1
+      while i < a.count, a[i] >= 48, a[i] <= 57 { i += 1; digits += 1 }
+    }
+    if digits == 0 { return false }
+    if i < a.count, a[i] == 69 || a[i] == 101 {
+      i += 1
+      if i < a.count, a[i] == 43 || a[i] == 45 { i += 1 }
+      var ed = 0
+      while i < a.count, a[i] >= 48, a[i] <= 57 { i += 1; ed += 1 }
+      if ed == 0 { return false }
+    }
+    return i == a.count
+  }
+
+  // Canonical M number formatting (mstr): no trailing .0, no leading 0 before
+  // the decimal point (".5" not "0.5"), exponent form only for extreme
+  // magnitudes (like GT.M).
   public static func mstr(_ d: Double) -> String {
     if d.isNaN { return "NaN" }
     if d.isInfinite { return d > 0 ? "Inf" : "-Inf" }
@@ -78,6 +104,9 @@ public struct MValue: Equatable, Hashable {
       while s.hasSuffix("0") { s.removeLast() }
       if s.hasSuffix(".") { s.removeLast() }
     }
+    // strip leading zero before decimal point: 0.5 -> .5, -0.5 -> -.5 (C20/C25)
+    if s.hasPrefix("0.") { s.removeFirst() }
+    else if s.hasPrefix("-0.") { s.remove(at: s.index(s.startIndex, offsetBy: 1)) }
     return s
   }
 

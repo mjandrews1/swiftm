@@ -1,4 +1,0 @@
-module parser {
-header "parser-Swift.h"
-export *
-}
