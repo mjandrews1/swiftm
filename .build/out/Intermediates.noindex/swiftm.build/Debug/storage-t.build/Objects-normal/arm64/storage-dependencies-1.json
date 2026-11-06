@@ -1,0 +1,36 @@
+[
+  {
+    "isFramework" : false,
+    "moduleName" : "Swift",
+    "modulePath" : "\/Users\/mark\/swiftm\/.build\/out\/SDKExplicitPrecompiledModules\/Swift-K0KVC15AXLQ0.swiftmodule"
+  },
+  {
+    "isFramework" : false,
+    "moduleName" : "SwiftOnoneSupport",
+    "modulePath" : "\/Users\/mark\/swiftm\/.build\/out\/SDKExplicitPrecompiledModules\/SwiftOnoneSupport-3K05AJNJEYWU5.swiftmodule"
+  },
+  {
+    "isFramework" : false,
+    "moduleName" : "_Concurrency",
+    "modulePath" : "\/Users\/mark\/swiftm\/.build\/out\/SDKExplicitPrecompiledModules\/_Concurrency-K6PL2Y7Z02FT.swiftmodule"
+  },
+  {
+    "isFramework" : false,
+    "moduleName" : "_StringProcessing",
+    "modulePath" : "\/Users\/mark\/swiftm\/.build\/out\/SDKExplicitPrecompiledModules\/_StringProcessing-7269VA5XIB1W.swiftmodule"
+  },
+  {
+    "clangModuleMapPath" : "\/Library\/Developer\/CommandLineTools\/SDKs\/MacOSX27.0.sdk\/usr\/lib\/swift\/shims\/module.modulemap",
+    "clangModulePath" : "\/Users\/mark\/swiftm\/.build\/out\/SDKExplicitPrecompiledModules\/SwiftShims-8GESKIDMSMEYZ6H5DD5PS7S4K.pcm",
+    "isBridgingHeaderDependency" : false,
+    "isFramework" : false,
+    "moduleName" : "SwiftShims"
+  },
+  {
+    "clangModuleMapPath" : "\/Library\/Developer\/CommandLineTools\/SDKs\/MacOSX27.0.sdk\/usr\/lib\/swift\/shims\/module.modulemap",
+    "clangModulePath" : "\/Users\/mark\/swiftm\/.build\/out\/SDKExplicitPrecompiledModules\/_SwiftConcurrencyShims-383GBGDNBFT5IHL8FWDRDF3AT.pcm",
+    "isBridgingHeaderDependency" : false,
+    "isFramework" : false,
+    "moduleName" : "_SwiftConcurrencyShims"
+  }
+]

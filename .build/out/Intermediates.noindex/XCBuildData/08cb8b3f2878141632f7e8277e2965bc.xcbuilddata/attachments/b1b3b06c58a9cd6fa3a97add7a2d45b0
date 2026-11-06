@@ -1,0 +1,19 @@
+{
+  "" : {
+    "diagnostics" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/storage-t.build/Objects-normal/arm64/storage-primary.dia",
+    "emit-module-dependencies" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/storage-t.build/Objects-normal/arm64/storage-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/storage-t.build/Objects-normal/arm64/storage-primary-emit-module.dia",
+    "pch" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/storage-t.build/Objects-normal/arm64/storage-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/storage-t.build/Objects-normal/arm64/storage-primary.swiftdeps"
+  },
+  "/Users/mark/swiftm/Sources/storage/Storage.swift" : {
+    "const-values" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/storage-t.build/Objects-normal/arm64/Storage.swiftconstvalues",
+    "dependencies" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/storage-t.build/Objects-normal/arm64/Storage.d",
+    "diagnostics" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/storage-t.build/Objects-normal/arm64/Storage.dia",
+    "index-unit-output-path" : "/swiftm.build/Debug/storage-t.build/Objects-normal/arm64/Storage.o",
+    "llvm-bc" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/storage-t.build/Objects-normal/arm64/Storage.bc",
+    "object" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/storage-t.build/Objects-normal/arm64/Storage.o",
+    "swift-dependencies" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/storage-t.build/Objects-normal/arm64/Storage.swiftdeps",
+    "swiftmodule" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/storage-t.build/Objects-normal/arm64/Storage~partial.swiftmodule"
+  }
+}

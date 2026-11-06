@@ -1,0 +1,19 @@
+{
+  "" : {
+    "diagnostics" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/swiftm-p.build/Objects-normal/arm64/swiftm-primary.dia",
+    "emit-module-dependencies" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/swiftm-p.build/Objects-normal/arm64/swiftm-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/swiftm-p.build/Objects-normal/arm64/swiftm-primary-emit-module.dia",
+    "pch" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/swiftm-p.build/Objects-normal/arm64/swiftm-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/swiftm-p.build/Objects-normal/arm64/swiftm-primary.swiftdeps"
+  },
+  "/Users/mark/swiftm/Sources/cli/main.swift" : {
+    "const-values" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/swiftm-p.build/Objects-normal/arm64/main.swiftconstvalues",
+    "dependencies" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/swiftm-p.build/Objects-normal/arm64/main.d",
+    "diagnostics" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/swiftm-p.build/Objects-normal/arm64/main.dia",
+    "index-unit-output-path" : "/swiftm.build/Debug/swiftm-p.build/Objects-normal/arm64/main.o",
+    "llvm-bc" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/swiftm-p.build/Objects-normal/arm64/main.bc",
+    "object" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/swiftm-p.build/Objects-normal/arm64/main.o",
+    "swift-dependencies" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/swiftm-p.build/Objects-normal/arm64/main.swiftdeps",
+    "swiftmodule" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/swiftm-p.build/Objects-normal/arm64/main~partial.swiftmodule"
+  }
+}

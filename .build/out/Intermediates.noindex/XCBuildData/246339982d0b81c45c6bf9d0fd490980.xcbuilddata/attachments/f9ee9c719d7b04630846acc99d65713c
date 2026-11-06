@@ -1,0 +1,29 @@
+{
+  "" : {
+    "diagnostics" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/IR-t.build/Objects-normal/arm64/IR-primary.dia",
+    "emit-module-dependencies" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/IR-t.build/Objects-normal/arm64/IR-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/IR-t.build/Objects-normal/arm64/IR-primary-emit-module.dia",
+    "pch" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/IR-t.build/Objects-normal/arm64/IR-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/IR-t.build/Objects-normal/arm64/IR-primary.swiftdeps"
+  },
+  "/Users/mark/swiftm/Sources/IR/AST.swift" : {
+    "const-values" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/IR-t.build/Objects-normal/arm64/AST.swiftconstvalues",
+    "dependencies" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/IR-t.build/Objects-normal/arm64/AST.d",
+    "diagnostics" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/IR-t.build/Objects-normal/arm64/AST.dia",
+    "index-unit-output-path" : "/swiftm.build/Debug/IR-t.build/Objects-normal/arm64/AST.o",
+    "llvm-bc" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/IR-t.build/Objects-normal/arm64/AST.bc",
+    "object" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/IR-t.build/Objects-normal/arm64/AST.o",
+    "swift-dependencies" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/IR-t.build/Objects-normal/arm64/AST.swiftdeps",
+    "swiftmodule" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/IR-t.build/Objects-normal/arm64/AST~partial.swiftmodule"
+  },
+  "/Users/mark/swiftm/Sources/IR/MValue.swift" : {
+    "const-values" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/IR-t.build/Objects-normal/arm64/MValue.swiftconstvalues",
+    "dependencies" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/IR-t.build/Objects-normal/arm64/MValue.d",
+    "diagnostics" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/IR-t.build/Objects-normal/arm64/MValue.dia",
+    "index-unit-output-path" : "/swiftm.build/Debug/IR-t.build/Objects-normal/arm64/MValue.o",
+    "llvm-bc" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/IR-t.build/Objects-normal/arm64/MValue.bc",
+    "object" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/IR-t.build/Objects-normal/arm64/MValue.o",
+    "swift-dependencies" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/IR-t.build/Objects-normal/arm64/MValue.swiftdeps",
+    "swiftmodule" : "/Users/mark/swiftm/.build/out/Intermediates.noindex/swiftm.build/Debug/IR-t.build/Objects-normal/arm64/MValue~partial.swiftmodule"
+  }
+}
