@@ -6,12 +6,25 @@ import IR
 import parser
 import runtime
 
-func runCase(_ code: String) -> String {
+typealias ExtMap = [String: (routine: Routine, formals: [String: [String]])]
+
+func buildExternals(_ map: [String: String]) -> ExtMap {
+  var out: ExtMap = [:]
+  for (name, src) in map {
+    if let (r, f) = try? Parser.parseRoutine(src) { out[name] = (r, f) }
+  }
+  return out
+}
+
+func runCase(_ code: String, externals: ExtMap = [:]) -> String {
   let (routine, formals) = (try? Parser.parseRoutine(code)) ?? (Routine(lines: []), [:])
   let it = Interp()
   it.routine = routine
   it.labelFormals = formals
-  if routine.lines.first?.label != nil {
+  it.currentFormals = formals
+  it.externals = externals
+  if let lbl = routine.lines.first?.label {
+    it.routineName = lbl
     it.pc = 0
     it.run()
   } else {
@@ -37,7 +50,7 @@ func normalize(_ s: String) -> String {
 // Minimal JSON reader for {"cases":[{"name","code","expected"},...]} (same
 // schema as pymumps/tests/conformance.json; no Foundation JSON needed for the
 // flat shape — but Foundation is fine on macOS).
-struct CorpusCase { var name: String; var code: String; var expected: String }
+struct CorpusCase { var name: String; var code: String; var expected: String; var routines: [String: String] }
 
 func loadCorpus(_ path: String) throws -> [CorpusCase] {
   let data = try Data(contentsOf: URL(fileURLWithPath: path))
@@ -46,14 +59,27 @@ func loadCorpus(_ path: String) throws -> [CorpusCase] {
   return cases.map {
     CorpusCase(name: $0["name"] as? String ?? "",
                code: $0["code"] as? String ?? "",
-               expected: $0["expected"] as? String ?? "")
+               expected: $0["expected"] as? String ?? "",
+               routines: $0["routines"] as? [String: String] ?? [:])
   }
 }
 
 let args = CommandLine.arguments
 if args.count >= 3, args[1] == "run" {
   let text = try String(contentsOfFile: args[2], encoding: .utf8)
-  print(runCase(text), terminator: "")
+  // load sibling .m files as external routines (^ROUTINE references)
+  let dir = URL(fileURLWithPath: args[2]).deletingLastPathComponent().path
+  let mainName = URL(fileURLWithPath: args[2]).deletingPathExtension().lastPathComponent
+  var ext: ExtMap = [:]
+  if let files = try? FileManager.default.contentsOfDirectory(atPath: dir) {
+    for f in files where f.hasSuffix(".m") {
+      let name = String(f.dropLast(2))
+      if name == mainName { continue }
+      if let src = try? String(contentsOfFile: dir + "/" + f, encoding: .utf8),
+         let (r, fo) = try? Parser.parseRoutine(src) { ext[name] = (r, fo) }
+    }
+  }
+  print(runCase(text, externals: ext), terminator: "")
 } else if args.count >= 3, args[1] == "corpus" {
   let cases = try loadCorpus(args[2])
   var pass = 0, fail = 0
@@ -61,7 +87,7 @@ if args.count >= 3, args[1] == "run" {
   let only = args.count >= 4 ? args[3] : nil
   for c in cases {
     if let only, !c.name.contains(only) { continue }
-    let got = runCase(c.code)
+    let got = runCase(c.code, externals: buildExternals(c.routines))
     if normalize(got) == normalize(c.expected) { pass += 1 }
     else { fail += 1; failures.append("\(c.name): got=\(String(reflecting: got).prefix(80)) want=\(String(reflecting: c.expected).prefix(80))") }
   }
@@ -80,7 +106,7 @@ if args.count >= 3, args[1] == "run" {
   // dump <json>: emit {"cases":[{name,out}]} — same shape as the mjvm harness dump
   let cases = try loadCorpus(args[2])
   var parts: [String] = []
-  for c in cases { parts.append("{\"name\":\(jsonStr(c.name)),\"out\":\(jsonStr(runCase(c.code)))}") }
+  for c in cases { parts.append("{\"name\":\(jsonStr(c.name)),\"out\":\(jsonStr(runCase(c.code, externals: buildExternals(c.routines))))}") }
   print("{\"cases\":[" + parts.joined(separator: ",") + "]}")
 } else {
   print("usage: swiftm run <file.m> | swiftm corpus <conformance.json> [nameFilter] | swiftm dump <conformance.json>")

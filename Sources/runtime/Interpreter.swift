@@ -14,6 +14,9 @@ public final class Interp {
   public var vy = 0                    // $Y — line number
   public var test = false              // $TEST
   public var routine: Routine?
+  public var routineName = ""          // name of the current routine (for tag^SELF checks)
+  public var externals: [String: (routine: Routine, formals: [String: [String]])] = [:]
+  public var currentFormals: [String: [String]] = [:] // formals of the current routine
   public var pc = 0                    // current line index
   public var callStack: [(ret: Int, savedTest: Bool, label: String)] = []
   public var newStack: [[String: MValue]] = []  // saved simple locals per NEW
@@ -489,12 +492,18 @@ public final class Interp {
     case .doCall(let label, let args, _, let body):
       if let label = label {
         if label.contains("^") {
-          // D ^ROUTINE — external routine: no-op unless loaded (single-routine harness)
-          execCmds(body)
+          let parts = label.split(separator: "^", omittingEmptySubsequences: false)
+          let tag = parts.count > 1 ? String(parts[0]) : ""
+          let rout = String(parts.last ?? "")
+          if !rout.isEmpty, rout != routineName, let ext = externals[rout] {
+            callExternal(ext, tag: tag, args: args.map { eval($0) })
+          } else {
+            callLabel(tag, args: args.map { eval($0) })
+          }
         } else {
           callLabel(label, args: args.map { eval($0) })
-          execCmds(body)
         }
+        execCmds(body)
       } else {
         execCmds(body) // argumentless DO: body = rest of line / block
       }
@@ -514,11 +523,11 @@ public final class Interp {
       }
     case .xecute(let code, _):
       let text = eval(code).raw
-      if let (r, _) = try? Parser.parseRoutine(text) {
-        let saved = routine; let savedPc = pc
-        routine = r; pc = 0
+      if let (r, f) = try? Parser.parseRoutine(text) {
+        let saved = routine; let savedPc = pc; let savedF = currentFormals
+        routine = r; currentFormals = f; pc = 0
         run()
-        routine = saved; pc = savedPc
+        routine = saved; pc = savedPc; currentFormals = savedF
       }
     case .hang: break // HANG 0 = no-op for our purposes
     case .merge(let dst, let src):
@@ -643,7 +652,7 @@ public final class Interp {
     guard let r = routine, let idx = r.lines.firstIndex(where: { $0.label == label }) else { return }
     let savedPc = pc
     let savedTest = test
-    if let formals = labelFormals[label] {
+    if let formals = currentFormals[label] {
       newStack.append(store.locals)
       for (i, f) in formals.enumerated() {
         store.locals[f] = i < args.count ? args[i] : .null
@@ -652,19 +661,63 @@ public final class Interp {
     callStack.append((ret: savedPc + 1, savedTest: savedTest, label: label))
     pc = idx
     run()
-    if labelFormals[label] != nil, let saved = newStack.popLast() { store.locals = saved }
+    if currentFormals[label] != nil, let saved = newStack.popLast() { store.locals = saved }
     if !halted { test = savedTest } // pc already set to the return address by QUIT
   }
 
   public var labelFormals: [String: [String]] = [:]
 
+  // DO tag^ROUTINE(args) into a loaded external routine (MControl.dfy DO semantics)
+  func callExternal(_ ext: (routine: Routine, formals: [String: [String]]), tag: String, args: [MValue]) {
+    let entry: Int
+    let entryLabel: String
+    if tag.isEmpty {
+      entry = 0
+      entryLabel = ext.routine.lines.first?.label ?? ""
+    } else if let idx = ext.routine.lines.firstIndex(where: { $0.label == tag }) {
+      entry = idx
+      entryLabel = tag
+    } else {
+      return
+    }
+    let savedRoutine = routine
+    let savedFormals = currentFormals
+    let savedPc = pc
+    let savedTest = test
+    let hasFormals = ext.formals[entryLabel] != nil
+    if hasFormals {
+      newStack.append(store.locals)
+      for (i, f) in ext.formals[entryLabel]!.enumerated() {
+        store.locals[f] = i < args.count ? args[i] : .null
+      }
+    }
+    callStack.append((ret: savedPc + 1, savedTest: savedTest, label: entryLabel))
+    routine = ext.routine
+    currentFormals = ext.formals
+    pc = entry
+    run()
+    routine = savedRoutine
+    currentFormals = savedFormals
+    if hasFormals, let saved = newStack.popLast() { store.locals = saved }
+    if !halted { test = savedTest }
+  }
+
   func callExt(label: String, args: [MValue]) -> MValue {
-    // $$label(args): label may be "TAG^ROUTINE" — same-routine only here
-    let lbl = label.contains("^") ? String(label.split(separator: "^").first ?? "") : label
+    // $$label(args): label may be "TAG^ROUTINE"
+    var lbl = label
+    var rout: String? = nil
+    if label.contains("^") {
+      let parts = label.split(separator: "^", omittingEmptySubsequences: false)
+      lbl = String(parts[0])
+      if parts.count > 1 { rout = String(parts[1]) }
+    }
+    if let rout = rout, !rout.isEmpty, rout != routineName, let ext = externals[rout] {
+      return extExternal(ext, tag: lbl, args: args)
+    }
     guard let r = routine, let idx = r.lines.firstIndex(where: { $0.label == lbl }) else { return .null }
     let savedPc = pc
     callStack.append((ret: savedPc, savedTest: test, label: lbl))
-    if let formals = labelFormals[lbl] {
+    if let formals = currentFormals[lbl] {
       newStack.append(store.locals)
       for (i, f) in formals.enumerated() { store.locals[f] = i < args.count ? args[i] : .null }
     }
@@ -673,7 +726,33 @@ public final class Interp {
     extReturn = { v in result = v }
     run()
     extReturn = nil
-    if labelFormals[lbl] != nil, let saved = newStack.popLast() { store.locals = saved }
+    if currentFormals[lbl] != nil, let saved = newStack.popLast() { store.locals = saved }
+    if !halted { pc = savedPc }
+    return result
+  }
+
+  // $$TAG^ROUTINE(args) into a loaded external routine: QUIT value is the result
+  func extExternal(_ ext: (routine: Routine, formals: [String: [String]]), tag: String, args: [MValue]) -> MValue {
+    guard let idx = ext.routine.lines.firstIndex(where: { $0.label == tag }) else { return .null }
+    let savedRoutine = routine
+    let savedFormals = currentFormals
+    let savedPc = pc
+    callStack.append((ret: savedPc, savedTest: test, label: tag))
+    let hasFormals = ext.formals[tag] != nil
+    if hasFormals {
+      newStack.append(store.locals)
+      for (i, f) in ext.formals[tag]!.enumerated() { store.locals[f] = i < args.count ? args[i] : .null }
+    }
+    routine = ext.routine
+    currentFormals = ext.formals
+    pc = idx
+    var result = MValue.null
+    extReturn = { v in result = v }
+    run()
+    extReturn = nil
+    routine = savedRoutine
+    currentFormals = savedFormals
+    if hasFormals, let saved = newStack.popLast() { store.locals = saved }
     if !halted { pc = savedPc }
     return result
   }

@@ -233,7 +233,9 @@ public struct Parser {
       var args: [Expr] = []
       if pos < s.endIndex, s[pos] != " ", s[pos] != "\t" {
         // target: label or ^routine or label^routine, optional (args)
-        if let w2 = readWord() {
+        if eat("^") {
+          label = "^" + (readWord() ?? "")
+        } else if let w2 = readWord() {
           label = w2
           if eat("^") { label = (label ?? "") + "^" + (readWord() ?? "") }
         }
@@ -416,7 +418,8 @@ public struct Parser {
       pos = s.index(after: pos)
       if pos < s.endIndex, s[pos] == "$" {
         pos = s.index(after: pos)
-        guard let lbl = readWord() else { throw ParseError.msg("$$ needs label") }
+        guard var lbl = readWord() else { throw ParseError.msg("$$ needs label") }
+        if eat("^") { lbl += "^" + (readWord() ?? "") }
         var args: [Expr] = []
         if eat("(") {
           if !(pos < s.endIndex && s[pos] == ")") {
